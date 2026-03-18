@@ -40,6 +40,48 @@ Kafka-first, event-driven platform for real-time disaster/NGO task allocation.
 - Rebuild from scratch:
   - docker compose down && docker compose up --build -d
 
+## Reliability Check
+- Run the processed-events smoke check:
+   - ./scripts/check_processed_events.sh
+- Optional timeout override (seconds):
+   - ./scripts/check_processed_events.sh 25
+- What it validates:
+   - Publishes one task to the API.
+   - Confirms processed event counters increase for both `api_gateway_read_model` and `scheduler` in PostgreSQL.
+- Expected successful output (example):
+   - Before: api_gateway_read_model=65, scheduler=63
+   - Published task_id=<uuid>
+   - PASS: counts increased
+   - After: api_gateway_read_model=67, scheduler=65
+
+## Worker Simulation Modes
+- Configure behavior with `WORKER_EXECUTION_MODE` in `.env`:
+   - `normal`: random duration and failure using `WORKER_MIN_EXEC_SEC`, `WORKER_MAX_EXEC_SEC`, `WORKER_FAILURE_RATE`.
+   - `fast`: short execution with very low failure probability.
+   - `failure_prone`: normal execution time with high failure probability.
+   - `deterministic`: fixed delay and deterministic fail decision per task id using `WORKER_DETERMINISTIC_DELAY_SEC` and `WORKER_DETERMINISTIC_FAIL_PERCENT`.
+- Run a deterministic demo and print final outcomes:
+   - ./scripts/run_deterministic_worker_demo.sh
+   - Optional args: ./scripts/run_deterministic_worker_demo.sh <task_count> <timeout_sec>
+   - Example with explicit timeout: ./scripts/run_deterministic_worker_demo.sh 6 90
+
+## Failure Injection Demo
+- Kill one worker during active processing and observe eventual outcomes:
+   - ./scripts/run_worker_failure_injection_demo.sh
+- Optional args: ./scripts/run_worker_failure_injection_demo.sh <task_count> <timeout_sec>
+- Example: ./scripts/run_worker_failure_injection_demo.sh 6 140
+
+## Load And Scaling Demo
+- Generate load directly:
+   - python3 scripts/load_generator.py --tasks 200 --timeout 240
+- Run scaling demo (scale workers + load + report):
+   - ./scripts/run_scaling_demo.sh
+   - Optional args: ./scripts/run_scaling_demo.sh <task_count> <worker_count> <timeout_sec> <skill_mode>
+   - skill_mode: compatible (default) or mixed
+   - Example: ./scripts/run_scaling_demo.sh 500 5 420 compatible
+- Reports are written to:
+   - docs/reports/
+
 ## Project Structure
 - services/api_gateway: FastAPI HTTP and WebSocket entrypoint.
 - services/scheduler: priority/availability assignment logic.

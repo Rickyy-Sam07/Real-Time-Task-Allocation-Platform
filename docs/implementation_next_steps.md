@@ -30,7 +30,7 @@
 4. Add dead-letter replay endpoint/workflow for operator-triggered retry.
 
 ## Scaling Demo
-1. Run `docker compose up --build --scale worker=5`.
-2. Use load generator to push 500-1000 tasks.
-3. Capture metrics: completion rate, average latency, DLQ count.
-4. Record scheduler fairness evidence (per-worker task distribution histogram).
+1. Completed: baseline load generator script (`scripts/load_generator.py`).
+2. Completed: scaling demo runner with JSON reporting (`scripts/run_scaling_demo.sh`).
+3. Remaining: run and archive benchmark passes at 500, 750, and 1000 tasks.
+4. Remaining: record fairness and queue-lag evidence from report outputs and logs.

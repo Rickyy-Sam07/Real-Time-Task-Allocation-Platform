@@ -22,6 +22,16 @@ KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 WORKER_ID = UUID(os.getenv("WORKER_ID", str(uuid4())))
 WORKER_ZONE = os.getenv("WORKER_ZONE", "zone-a")
 WORKER_SKILLS = [item.strip() for item in os.getenv("WORKER_SKILLS", "rescue,medical").split(",") if item.strip()]
+WORKER_EXECUTION_MODE = os.getenv("WORKER_EXECUTION_MODE", "normal").strip().lower()
+
+# Used by normal mode.
+WORKER_MIN_EXEC_SEC = float(os.getenv("WORKER_MIN_EXEC_SEC", "1.0"))
+WORKER_MAX_EXEC_SEC = float(os.getenv("WORKER_MAX_EXEC_SEC", "3.0"))
+WORKER_FAILURE_RATE = float(os.getenv("WORKER_FAILURE_RATE", "0.1"))
+
+# Used by deterministic mode.
+WORKER_DETERMINISTIC_DELAY_SEC = float(os.getenv("WORKER_DETERMINISTIC_DELAY_SEC", "1.5"))
+WORKER_DETERMINISTIC_FAIL_PERCENT = int(os.getenv("WORKER_DETERMINISTIC_FAIL_PERCENT", "10"))
 
 
 class WorkerAgent:
@@ -66,6 +76,26 @@ class WorkerAgent:
             if self.producer is not None:
                 await self.producer.stop()
 
+    def _execution_delay_seconds(self, task_id: UUID) -> float:
+        if WORKER_EXECUTION_MODE == "fast":
+            return random.uniform(0.2, 0.8)
+        if WORKER_EXECUTION_MODE == "failure_prone":
+            return random.uniform(1.0, 3.0)
+        if WORKER_EXECUTION_MODE == "deterministic":
+            return max(0.0, WORKER_DETERMINISTIC_DELAY_SEC)
+        return random.uniform(max(0.0, WORKER_MIN_EXEC_SEC), max(WORKER_MIN_EXEC_SEC, WORKER_MAX_EXEC_SEC))
+
+    def _should_fail(self, task_id: UUID) -> bool:
+        if WORKER_EXECUTION_MODE == "fast":
+            return random.random() < 0.02
+        if WORKER_EXECUTION_MODE == "failure_prone":
+            return random.random() < 0.5
+        if WORKER_EXECUTION_MODE == "deterministic":
+            threshold = min(max(WORKER_DETERMINISTIC_FAIL_PERCENT, 0), 100)
+            return (task_id.int % 100) < threshold
+        rate = min(max(WORKER_FAILURE_RATE, 0.0), 1.0)
+        return random.random() < rate
+
     async def heartbeat_loop(self) -> None:
         while True:
             assert self.producer is not None
@@ -94,9 +124,9 @@ class WorkerAgent:
         started_event = EventEnvelope(topic=Topic.TASK_UPDATED, payload=started.model_dump(mode="json"))
         await self.producer.send_and_wait(Topic.TASK_UPDATED.value, started_event.model_dump_json().encode("utf-8"))
 
-        await asyncio.sleep(random.uniform(1.0, 3.0))
+        await asyncio.sleep(self._execution_delay_seconds(task_id))
 
-        if random.random() < 0.1:
+        if self._should_fail(task_id):
             failed = TaskUpdatedPayload(
                 task_id=task_id,
                 status=TaskStatus.FAILED,
