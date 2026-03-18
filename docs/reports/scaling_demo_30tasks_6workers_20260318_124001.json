@@ -1,0 +1,23 @@
+{
+  "submitted": 30,
+  "observed": 30,
+  "elapsed_sec": 6.166,
+  "status_counts": {
+    "completed": 30
+  },
+  "pending_or_inflight": 0,
+  "worker_distribution": {
+    "1b6ac57a-8cad-4fe3-8975-601d70f5e076": 4,
+    "b2f09718-0f10-4601-9f13-ee3f181dd530": 5,
+    "22c0c730-5343-4790-955a-3016d224f06e": 6,
+    "dd37e8cc-9193-404e-bb3a-ead8c8a6eefc": 5,
+    "3c1dd302-e8cf-4b40-b754-4f6d1bde52f2": 4,
+    "57994161-6966-40c8-9806-1dbb0bc8d1ec": 6
+  },
+  "latency_ms": {
+    "count": 30,
+    "avg": 3926.12,
+    "p50": 3901.85,
+    "max": 5289.58
+  }
+}

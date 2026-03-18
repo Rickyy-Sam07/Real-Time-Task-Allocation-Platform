@@ -1,0 +1,61 @@
+{
+  "run_label": "wave1_benchmark_matrix_20260318",
+  "assumptions": {
+    "worker_mode": "fast",
+    "workers": 6,
+    "queue_wait_proxy_note": "queue_wait_proxy_p50_ms = max(0, p50_latency_ms - 500ms fast-mode execution baseline)"
+  },
+  "rows": [
+    {
+      "tasks": 500,
+      "report": "docs/reports/scaling_demo_500tasks_6workers_20260318_120004.json",
+      "elapsed_sec": 46.156,
+      "throughput_tps": 10.833,
+      "throughput_tpm": 649.97,
+      "completed": 500,
+      "failed": 0,
+      "pending_or_inflight": 0,
+      "latency_avg_ms": 24150.15,
+      "latency_p50_ms": 25366.34,
+      "latency_max_ms": 45852.53,
+      "fairness_max_share": 0.172,
+      "fairness_stddev_tasks": 1.97,
+      "fairness_spread_tasks": 6,
+      "queue_wait_proxy_p50_ms": 24866.34
+    },
+    {
+      "tasks": 750,
+      "report": "docs/reports/scaling_demo_750tasks_6workers_20260318_120201.json",
+      "elapsed_sec": 67.794,
+      "throughput_tps": 11.063,
+      "throughput_tpm": 663.78,
+      "completed": 750,
+      "failed": 0,
+      "pending_or_inflight": 0,
+      "latency_avg_ms": 34233.76,
+      "latency_p50_ms": 34028.72,
+      "latency_max_ms": 71531.59,
+      "fairness_max_share": 0.172,
+      "fairness_stddev_tasks": 3.92,
+      "fairness_spread_tasks": 11,
+      "queue_wait_proxy_p50_ms": 33528.72
+    },
+    {
+      "tasks": 1000,
+      "report": "docs/reports/scaling_demo_1000tasks_6workers_20260318_120421.json",
+      "elapsed_sec": 90.969,
+      "throughput_tps": 10.993,
+      "throughput_tpm": 659.57,
+      "completed": 1000,
+      "failed": 0,
+      "pending_or_inflight": 0,
+      "latency_avg_ms": 48270.55,
+      "latency_p50_ms": 48256.61,
+      "latency_max_ms": 98535.88,
+      "fairness_max_share": 0.174,
+      "fairness_stddev_tasks": 4.53,
+      "fairness_spread_tasks": 14,
+      "queue_wait_proxy_p50_ms": 47756.61
+    }
+  ]
+}

@@ -95,6 +95,9 @@ Kafka-first, event-driven platform for real-time disaster/NGO task allocation.
    - Example: ./scripts/run_scaling_demo.sh 500 5 420 compatible
 - Reports are written to:
    - docs/reports/
+- Wave 1 benchmark matrix artifacts:
+   - docs/reports/wave1_benchmark_matrix_20260318.md
+   - docs/reports/wave1_benchmark_matrix_20260318.json
 
 ## CI And Automated Checks
 - GitHub Actions workflow:
@@ -122,5 +125,5 @@ Kafka-first, event-driven platform for real-time disaster/NGO task allocation.
 - docs/implementation_next_steps.md: implementation notes.
 
 ## Next Milestones
-- Add scheduler fairness scoring (load and least-recently-assigned tie-break).
 - Build operator-facing dashboard controls and advanced metrics (failure/retry/DLQ).
+- Persist task-level `max_retries` in PostgreSQL schema to preserve retry policy across scheduler cache misses/restarts.

@@ -46,6 +46,8 @@ class WorkerState:
     skills: list[str]
     active_task_id: UUID | None
     heartbeat_at: datetime
+    assignments_count: int = 0
+    last_assigned_at: datetime | None = None
 
 
 class Scheduler:
@@ -359,6 +361,7 @@ class Scheduler:
     async def _on_worker_status(self, payload: dict[str, Any]) -> None:
         status_payload = WorkerStatusPayload.model_validate(payload)
         worker_id = status_payload.worker_id
+        previous = self.workers.get(worker_id)
         self.workers[worker_id] = WorkerState(
             worker_id=worker_id,
             status=status_payload.status,
@@ -366,6 +369,8 @@ class Scheduler:
             skills=status_payload.skills,
             active_task_id=status_payload.active_task_id,
             heartbeat_at=status_payload.heartbeat_at,
+            assignments_count=previous.assignments_count if previous is not None else 0,
+            last_assigned_at=previous.last_assigned_at if previous is not None else None,
         )
 
     async def _on_task_updated(self, payload: dict[str, Any]) -> None:
@@ -374,6 +379,11 @@ class Scheduler:
 
         if task_update.status == TaskStatus.IN_PROGRESS:
             await self._set_assignment_in_progress(task_update)
+            return
+
+        if task_update.status == TaskStatus.PENDING:
+            self._release_worker(task_id=task_id, worker_id=task_update.worker_id)
+            await self._ensure_task_pending(task_id)
             return
 
         if task_update.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
@@ -416,6 +426,50 @@ class Scheduler:
         assert self.producer is not None
         await self.producer.send_and_wait(Topic.TASK_DLQ.value, event.model_dump_json().encode("utf-8"))
         print(f"[scheduler] routed task {task_id} to DLQ after {retry_count} attempts")
+
+    async def _ensure_task_pending(self, task_id: UUID) -> None:
+        if self._is_task_pending(task_id):
+            return
+
+        task_payload = self.task_catalog.get(task_id)
+        if task_payload is None:
+            task_payload = await self._load_task_payload(task_id)
+            if task_payload is None:
+                return
+            self.task_catalog[task_id] = task_payload
+
+        self.task_retries[task_id] = 0
+        priority = int(task_payload.get("priority", 1))
+        now_ts = datetime.now(timezone.utc).timestamp()
+        heapq.heappush(self.pending, (-priority, now_ts, now_ts, task_payload))
+
+    async def _load_task_payload(self, task_id: UUID) -> dict[str, Any] | None:
+        assert self.db_pool is not None
+        async with self.db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT id, priority, estimated_duration_sec, location_zone, skills_required
+                FROM tasks
+                WHERE id = $1
+                """,
+                task_id,
+            )
+
+        if row is None:
+            return None
+
+        skills_required = row["skills_required"] or []
+        if not isinstance(skills_required, list):
+            skills_required = []
+
+        return {
+            "task_id": str(row["id"]),
+            "priority": int(row["priority"]),
+            "estimated_duration_sec": int(row["estimated_duration_sec"]),
+            "location_zone": row["location_zone"],
+            "skills_required": [str(skill) for skill in skills_required],
+            "max_retries": 3,
+        }
 
     def _release_worker(self, task_id: UUID, worker_id: UUID | None) -> None:
         if worker_id is not None:
@@ -480,9 +534,17 @@ class Scheduler:
             return None
 
         zone_candidates = [worker for worker in candidates if zone and worker.location_zone == zone]
-        if zone_candidates:
-            return zone_candidates[0]
-        return candidates[0]
+        selectable = zone_candidates if zone_candidates else candidates
+
+        # Fairness scoring:
+        # 1) lower cumulative assignment count wins
+        # 2) least recently assigned wins
+        # 3) stable UUID string tie-break
+        def score(worker: WorkerState) -> tuple[int, float, str]:
+            last_assigned_ts = worker.last_assigned_at.timestamp() if worker.last_assigned_at else 0.0
+            return (worker.assignments_count, last_assigned_ts, str(worker.worker_id))
+
+        return min(selectable, key=score)
 
     def _refresh_worker_liveness(self) -> None:
         now = datetime.now(timezone.utc)
@@ -538,6 +600,8 @@ class Scheduler:
         await self.producer.send_and_wait(Topic.TASK_ASSIGNED.value, event.model_dump_json().encode("utf-8"))
         worker.status = WorkerStatus.BUSY
         worker.active_task_id = assignment_payload.task_id
+        worker.assignments_count += 1
+        worker.last_assigned_at = datetime.now(timezone.utc)
         print(
             "[scheduler] assigned",
             assignment_payload.task_id,

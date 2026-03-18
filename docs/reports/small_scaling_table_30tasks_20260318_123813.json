@@ -1,0 +1,55 @@
+{
+  "run_label": "small_scaling_table_30tasks",
+  "tasks": 30,
+  "skill_mode": "compatible",
+  "rows": [
+    {
+      "workers": 2,
+      "report": "docs/reports/scaling_demo_30tasks_2workers_20260318_123813.json",
+      "elapsed_sec": 12.419,
+      "throughput_tps": 2.416,
+      "throughput_tpm": 144.94,
+      "completed": 30,
+      "failed": 0,
+      "pending_or_inflight": 0,
+      "latency_avg_ms": 7930.93,
+      "latency_p50_ms": 8082.47,
+      "latency_max_ms": 11755.9,
+      "max_worker_share": 0.5,
+      "fairness_spread": 0,
+      "fairness_stddev": 0.0
+    },
+    {
+      "workers": 4,
+      "report": "docs/reports/scaling_demo_30tasks_4workers_20260318_123909.json",
+      "elapsed_sec": 7.841,
+      "throughput_tps": 3.826,
+      "throughput_tpm": 229.56,
+      "completed": 30,
+      "failed": 0,
+      "pending_or_inflight": 0,
+      "latency_avg_ms": 4755.63,
+      "latency_p50_ms": 4591.77,
+      "latency_max_ms": 6796.6,
+      "max_worker_share": 0.2667,
+      "fairness_spread": 1,
+      "fairness_stddev": 0.5
+    },
+    {
+      "workers": 6,
+      "report": "docs/reports/scaling_demo_30tasks_6workers_20260318_124001.json",
+      "elapsed_sec": 6.166,
+      "throughput_tps": 4.865,
+      "throughput_tpm": 291.92,
+      "completed": 30,
+      "failed": 0,
+      "pending_or_inflight": 0,
+      "latency_avg_ms": 3926.12,
+      "latency_p50_ms": 3901.85,
+      "latency_max_ms": 5289.58,
+      "max_worker_share": 0.2,
+      "fairness_spread": 2,
+      "fairness_stddev": 0.82
+    }
+  ]
+}
