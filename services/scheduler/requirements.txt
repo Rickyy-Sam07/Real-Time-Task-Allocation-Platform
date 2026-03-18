@@ -1,2 +1,3 @@
 aiokafka==0.12.0
 pydantic==2.10.3
+asyncpg==0.30.0

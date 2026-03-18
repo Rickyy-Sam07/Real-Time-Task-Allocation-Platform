@@ -39,7 +39,15 @@ CREATE TABLE IF NOT EXISTS event_log (
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS processed_events (
+  consumer_name VARCHAR(100) NOT NULL,
+  event_id UUID NOT NULL,
+  processed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (consumer_name, event_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority DESC);
 CREATE INDEX IF NOT EXISTS idx_workers_status ON workers(status);
 CREATE INDEX IF NOT EXISTS idx_assignments_worker_id ON assignments(worker_id);
+CREATE INDEX IF NOT EXISTS idx_processed_events_consumer ON processed_events(consumer_name);

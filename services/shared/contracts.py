@@ -68,3 +68,12 @@ class WorkerStatusPayload(BaseModel):
     skills: list[str] = Field(default_factory=list)
     active_task_id: UUID | None = None
     heartbeat_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class TaskDLQPayload(BaseModel):
+    task_id: UUID
+    reason: str
+    retry_count: int
+    max_retries: int
+    worker_id: UUID | None = None
+    failed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
