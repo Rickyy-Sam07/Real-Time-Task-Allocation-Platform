@@ -378,6 +378,7 @@ class Scheduler:
 
         if task_update.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
             await self._set_assignment_terminal(task_update)
+            self._release_worker(task_id=task_id, worker_id=task_update.worker_id)
 
         if task_update.status == TaskStatus.COMPLETED:
             self.task_catalog.pop(task_id, None)
@@ -415,6 +416,24 @@ class Scheduler:
         assert self.producer is not None
         await self.producer.send_and_wait(Topic.TASK_DLQ.value, event.model_dump_json().encode("utf-8"))
         print(f"[scheduler] routed task {task_id} to DLQ after {retry_count} attempts")
+
+    def _release_worker(self, task_id: UUID, worker_id: UUID | None) -> None:
+        if worker_id is not None:
+            worker = self.workers.get(worker_id)
+            if worker is not None:
+                if worker.active_task_id == task_id:
+                    worker.active_task_id = None
+                if worker.status != WorkerStatus.OFFLINE:
+                    worker.status = WorkerStatus.AVAILABLE
+                return
+
+        for worker in self.workers.values():
+            if worker.active_task_id != task_id:
+                continue
+            worker.active_task_id = None
+            if worker.status != WorkerStatus.OFFLINE:
+                worker.status = WorkerStatus.AVAILABLE
+            return
 
     async def assign_pending_tasks(self) -> None:
         if not self.pending:
