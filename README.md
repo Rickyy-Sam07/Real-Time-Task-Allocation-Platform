@@ -115,6 +115,63 @@ Kafka-first, event-driven platform for real-time disaster/NGO task allocation.
    - Processed-events check and load-generator integration run
    - Report artifact upload from docs/reports/
 
+## CI Troubleshooting Notes
+- Symptom: intermittent `curl: (56) Recv failure: Connection reset by peer` during startup health checks.
+  - Meaning: API process is still initializing; retry loop usually recovers.
+  - Current behavior: workflow waits until `http://localhost:8000/health` succeeds.
+- Symptom: smoke test hangs at "Waiting for terminal state".
+  - Prior root cause: synthetic API-registered workers could be selected by scheduler but do not consume `task_assigned` events.
+  - Fix applied:
+    - `scripts/ci_smoke.sh` now waits for heartbeat-backed real workers from dashboard health.
+    - large `/tasks` payload parsing in smoke loop now uses stdin to avoid argv size failures.
+    - scheduler timeout recovery now resets DB assignment/task state before requeue.
+
+## File Responsibility Map
+
+| File | Responsibility |
+|---|---|
+| `services/api_gateway/main.py` | FastAPI ingress, dashboard endpoints, read-model updates, event publish/consume bridge. |
+| `services/scheduler/main.py` | Assignment engine, fairness scoring, retry/backoff, pending queue maintenance, heartbeat timeout handling. |
+| `services/worker/main.py` | Assignment consumer, task execution simulation, heartbeat publisher, terminal task updates. |
+| `services/dlq_processor/main.py` | Dedicated `task_dlq` consumer and durable DLQ persistence. |
+| `services/shared/contracts.py` | Shared event and payload schemas (`task_created`, `task_assigned`, `task_updated`, `worker_status`, `task_dlq`). |
+| `db/schema.sql` | Core tables, indexes, assignment constraints, processed-events and DLQ schema. |
+| `docker-compose.yml` | Local orchestration for all services and infrastructure dependencies. |
+| `scripts/ci_smoke.sh` | Fast lifecycle check from submission to terminal task state. |
+| `scripts/ci_integration.sh` | Full integration gate (dashboard/processed-events/crash/load assertions). |
+| `scripts/check_worker_crash_reassignment.sh` | Worker failure injection and reassignment validation flow. |
+| `scripts/load_generator.py` | Configurable benchmark load producer and metrics summary writer. |
+| `scripts/run_scaling_demo.sh` | One benchmark run with worker scaling and report generation. |
+| `scripts/run_small_scaling_table.sh` | Matrix runner for small scaling table (2 -> 4 -> 6 workers). |
+| `.github/workflows/ci.yml` | CI pipeline definition and artifact upload behavior. |
+| `docs/reports/benchmark.md` | Consolidated benchmark analysis, bottlenecks, tradeoffs, and optimization history. |
+
+## End-to-End Run And Test Guide
+
+1. Start stack:
+   - `cp .env.example .env`
+   - `docker compose up --build -d`
+2. Verify health and service state:
+   - `docker compose ps -a`
+   - `curl http://localhost:8000/health`
+   - `curl http://localhost:8000/dashboard/health`
+3. Run quick smoke lifecycle test:
+   - `bash scripts/ci_smoke.sh 150`
+4. Run full integration gate:
+   - `bash scripts/ci_integration.sh`
+5. Run benchmark matrix (large workload):
+   - `./scripts/run_scaling_demo.sh 500 6 900 compatible`
+   - `./scripts/run_scaling_demo.sh 750 6 900 compatible`
+   - `./scripts/run_scaling_demo.sh 1000 6 1200 compatible`
+6. Run small scaling table (2 -> 4 -> 6 workers):
+   - `./scripts/run_small_scaling_table.sh 300 600 compatible 2,4,6`
+7. Review generated reports:
+   - `docs/reports/benchmark.md`
+   - `docs/reports/wave1_benchmark_matrix_20260318.md`
+   - `docs/reports/small_scaling_table_*.md`
+8. Teardown local stack when done:
+   - `docker compose down -v`
+
 ## Project Structure
 - services/api_gateway: FastAPI HTTP and WebSocket entrypoint.
 - services/dlq_processor: dedicated task DLQ event persistence consumer.

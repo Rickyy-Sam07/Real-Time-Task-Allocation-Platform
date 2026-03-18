@@ -222,3 +222,32 @@ Mitigations in place:
 - docs/reports/small_scaling_table_30tasks_20260318_123813.json
 - docs/reports/ci_integration_report.json
 - docs/reports/result.json
+
+## 12) CI Failure Mode And Fix Summary
+
+Observed CI failure mode:
+- startup logs showed transient `curl: (56) Recv failure: Connection reset by peer` before API became healthy.
+- smoke stage could stall waiting for terminal state when synthetic API-registered workers were selected for assignment.
+
+Fixes applied:
+1. `scripts/ci_smoke.sh`
+   - removed synthetic worker registration from lifecycle path.
+   - added readiness gate for heartbeat-backed active workers from dashboard health.
+   - switched `/tasks` parsing to stdin-based Python consumption to avoid argv size limits.
+2. `services/scheduler/main.py`
+   - timeout recovery now marks stale active assignments failed and resets task status to pending in DB before in-memory requeue.
+
+Validation after fix:
+- smoke test reaches terminal state reliably.
+- full integration suite passes with crash-recovery and load-quality gates.
+
+## 13) End-to-End Reproduction Commands
+
+```bash
+docker compose up --build -d
+curl -fsS http://localhost:8000/health
+bash scripts/ci_smoke.sh 150
+bash scripts/ci_integration.sh
+./scripts/run_scaling_demo.sh 500 6 900 compatible
+./scripts/run_small_scaling_table.sh 300 600 compatible 2,4,6
+```

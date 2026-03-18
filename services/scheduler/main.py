@@ -324,7 +324,7 @@ class Scheduler:
         while True:
             await asyncio.sleep(self.maintenance_interval_sec)
             async with self._state_lock:
-                self._refresh_worker_liveness()
+                await self._refresh_worker_liveness()
                 await self.assign_pending_tasks()
 
     async def run(self) -> None:
@@ -347,7 +347,7 @@ class Scheduler:
                 elif envelope.topic == Topic.TASK_UPDATED:
                     await self._on_task_updated(envelope.payload)
 
-                self._refresh_worker_liveness()
+                await self._refresh_worker_liveness()
                 await self.assign_pending_tasks()
 
     async def _on_task_created(self, payload: dict[str, Any]) -> None:
@@ -546,7 +546,44 @@ class Scheduler:
 
         return min(selectable, key=score)
 
-    def _refresh_worker_liveness(self) -> None:
+    async def _mark_timed_out_assignment_and_reset_task(self, task_id: UUID, worker_id: UUID | None) -> None:
+        assert self.db_pool is not None
+        async with self.db_pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    WITH latest AS (
+                        SELECT id
+                        FROM assignments
+                        WHERE task_id = $1
+                          AND ($2::uuid IS NULL OR worker_id = $2)
+                          AND status IN ('assigned', 'in_progress')
+                        ORDER BY assigned_at DESC
+                        LIMIT 1
+                    )
+                    UPDATE assignments a
+                    SET status = 'failed',
+                        completed_at = COALESCE(a.completed_at, NOW()),
+                        failure_reason = COALESCE(a.failure_reason, 'worker_heartbeat_timeout')
+                    FROM latest
+                    WHERE a.id = latest.id
+                    """,
+                    task_id,
+                    worker_id,
+                )
+
+                await conn.execute(
+                    """
+                    UPDATE tasks
+                    SET status = 'pending',
+                        updated_at = NOW()
+                    WHERE id = $1
+                      AND status IN ('assigned', 'in_progress')
+                    """,
+                    task_id,
+                )
+
+    async def _refresh_worker_liveness(self) -> None:
         now = datetime.now(timezone.utc)
         for worker in self.workers.values():
             if worker.status == WorkerStatus.OFFLINE:
@@ -566,10 +603,13 @@ class Scheduler:
             if task_payload is None or self._is_task_pending(worker.active_task_id):
                 continue
 
+            timed_out_task_id = worker.active_task_id
+            await self._mark_timed_out_assignment_and_reset_task(timed_out_task_id, worker.worker_id)
             priority = int(task_payload.get("priority", 1))
             now_ts = now.timestamp()
             heapq.heappush(self.pending, (-priority, now_ts, now_ts, task_payload))
-            print(f"[scheduler] requeued task due to worker timeout: {worker.active_task_id}")
+            worker.active_task_id = None
+            print(f"[scheduler] requeued task due to worker timeout: {timed_out_task_id}")
 
     def _is_task_pending(self, task_id: UUID) -> bool:
         for _, _, _, payload in self.pending:
