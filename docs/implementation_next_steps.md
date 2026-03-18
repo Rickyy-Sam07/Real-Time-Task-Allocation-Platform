@@ -29,8 +29,8 @@
 1. Enforce idempotency with assignment and event uniqueness checks.
 2. Completed: assignment lifecycle persistence updates (`assigned` -> `in_progress` -> terminal states) to keep active constraints valid.
 3. Completed: dead-letter replay endpoint/workflow for operator-triggered retry (`/dlq/tasks`, `/dlq/replay`).
-4. Remaining: add a dedicated DLQ processor service.
-5. Remaining: add integration tests for worker crash and task reassignment paths.
+4. Completed: dedicated DLQ processor service to persist `task_dlq` events (`services/dlq_processor`).
+5. Completed: integration failure-path check for worker crash with post-crash assignment progress validation (`scripts/check_worker_crash_reassignment.sh`).
 
 ## Delivery Hardening Scope
 1. Completed: baseline GitHub Actions CI workflow (`.github/workflows/ci.yml`).

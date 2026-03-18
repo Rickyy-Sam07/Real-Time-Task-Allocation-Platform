@@ -1,0 +1,158 @@
+{
+  "run_label": "final_wave1_benchmark_600_requests",
+  "timestamp_utc": "2026-03-18T10:37:58.040466+00:00",
+  "config": {
+    "api": "http://localhost:8000",
+    "tasks_requested": 600,
+    "timeout_sec": 900,
+    "poll_interval_sec": 1.5,
+    "submit_delay_ms": 2,
+    "skill_mode": "compatible",
+    "workers_scaled": 6,
+    "worker_mode": "fast",
+    "worker_failure_rate": 0.03
+  },
+  "load_generator_summary": {
+    "submitted": 600,
+    "observed": 600,
+    "elapsed_sec": 520.827,
+    "status_counts": {
+      "completed": 599,
+      "failed": 1
+    },
+    "pending_or_inflight": 0,
+    "worker_distribution": {
+      "2c409893-61cf-4270-bb47-bf4dd8273135": 99,
+      "ae434235-130d-4e1c-ae55-613f5bf7eaad": 100,
+      "285473c5-272a-4a59-b9a6-45f7e5b49842": 98,
+      "9899c6f9-3e80-4d9b-9e1f-cce23986fc0e": 101,
+      "92d54644-2e58-4d74-8ef5-8664cb839e2f": 101,
+      "341038a6-df4c-4d6a-a29d-37de942c3f5e": 101
+    },
+    "latency_ms": {
+      "count": 600,
+      "avg": 259872.73,
+      "p50": 260700.75,
+      "max": 520796.15
+    }
+  },
+  "derived_metrics": {
+    "terminal_tasks": 600,
+    "completion_rate": 1.0,
+    "pending_or_inflight": 0,
+    "throughput_tasks_per_sec": 1.152,
+    "throughput_tasks_per_min": 69.12
+  },
+  "pre_snapshot": {
+    "dashboard_health": {
+      "status": "ok",
+      "service": "api_gateway_dashboard",
+      "kafka": "kafka:9092",
+      "websocket_connections": 1,
+      "read_model": {
+        "tasks_total": 385,
+        "workers_total": 128,
+        "tasks_by_status": {
+          "pending": 50,
+          "assigned": 11,
+          "in_progress": 9,
+          "completed": 312,
+          "failed": 3
+        },
+        "workers_by_status": {
+          "available": 124,
+          "busy": 4,
+          "offline": 0
+        },
+        "in_flight_tasks": 20
+      },
+      "dedupe_cache": {
+        "seen_event_ids": 3338,
+        "max_seen_events": 5000
+      }
+    },
+    "db_counters": {
+      "tasks_total": 385,
+      "tasks_pending": 50,
+      "tasks_assigned": 11,
+      "tasks_in_progress": 9,
+      "tasks_completed": 312,
+      "tasks_failed": 3,
+      "assignments_total": 363,
+      "assignments_assigned": 11,
+      "assignments_in_progress": 9,
+      "assignments_completed": 324,
+      "assignments_failed": 19,
+      "task_dlq_total": 5,
+      "task_dlq_replayed": 0,
+      "processed_api_gateway_read_model": 7095,
+      "processed_scheduler": 7110,
+      "processed_dlq_processor": 6
+    }
+  },
+  "post_snapshot": {
+    "dashboard_health": {
+      "status": "ok",
+      "service": "api_gateway_dashboard",
+      "kafka": "kafka:9092",
+      "websocket_connections": 1,
+      "read_model": {
+        "tasks_total": 985,
+        "workers_total": 128,
+        "tasks_by_status": {
+          "pending": 50,
+          "assigned": 11,
+          "in_progress": 9,
+          "completed": 912,
+          "failed": 3
+        },
+        "workers_by_status": {
+          "available": 124,
+          "busy": 4,
+          "offline": 0
+        },
+        "in_flight_tasks": 20
+      },
+      "dedupe_cache": {
+        "seen_event_ids": 5000,
+        "max_seen_events": 5000
+      }
+    },
+    "db_counters": {
+      "tasks_total": 985,
+      "tasks_pending": 50,
+      "tasks_assigned": 11,
+      "tasks_in_progress": 9,
+      "tasks_completed": 912,
+      "tasks_failed": 3,
+      "assignments_total": 974,
+      "assignments_assigned": 11,
+      "assignments_in_progress": 9,
+      "assignments_completed": 924,
+      "assignments_failed": 30,
+      "task_dlq_total": 5,
+      "task_dlq_replayed": 0,
+      "processed_api_gateway_read_model": 9678,
+      "processed_scheduler": 9682,
+      "processed_dlq_processor": 6
+    }
+  },
+  "delta_db_counters": {
+    "tasks_total": 600,
+    "tasks_pending": 0,
+    "tasks_assigned": 0,
+    "tasks_in_progress": 0,
+    "tasks_completed": 600,
+    "tasks_failed": 0,
+    "assignments_total": 611,
+    "assignments_assigned": 0,
+    "assignments_in_progress": 0,
+    "assignments_completed": 600,
+    "assignments_failed": 11,
+    "task_dlq_total": 0,
+    "task_dlq_replayed": 0,
+    "processed_api_gateway_read_model": 2583,
+    "processed_scheduler": 2572,
+    "processed_dlq_processor": 0
+  }
+}

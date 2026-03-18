@@ -4,6 +4,7 @@ Kafka-first, event-driven platform for real-time disaster/NGO task allocation.
 
 ## Architecture
 - API Gateway (FastAPI): task and worker ingestion, WebSocket dashboard stream, event publishing.
+- DLQ Processor: consumes `task_dlq` events and persists operator review records.
 - Scheduler: consumes task and worker events, maintains pending queue, performs assignment.
 - Worker (replicated): consumes assignments, emits started/completed/failed task lifecycle events.
 
@@ -107,11 +108,13 @@ Kafka-first, event-driven platform for real-time disaster/NGO task allocation.
    - Docker Compose stack startup
    - API and dashboard health validation
    - Smoke task lifecycle check
+   - Worker crash and reassignment integration check
    - Processed-events check and load-generator integration run
    - Report artifact upload from docs/reports/
 
 ## Project Structure
 - services/api_gateway: FastAPI HTTP and WebSocket entrypoint.
+- services/dlq_processor: dedicated task DLQ event persistence consumer.
 - services/scheduler: priority/availability assignment logic.
 - services/worker: simulated task execution agents.
 - services/shared: shared event contracts and enums.
@@ -120,5 +123,4 @@ Kafka-first, event-driven platform for real-time disaster/NGO task allocation.
 
 ## Next Milestones
 - Add scheduler fairness scoring (load and least-recently-assigned tie-break).
-- Add deeper integration and failure-path tests for crash/reassignment scenarios.
 - Build operator-facing dashboard controls and advanced metrics (failure/retry/DLQ).

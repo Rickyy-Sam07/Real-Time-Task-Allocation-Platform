@@ -1,0 +1,1 @@
+{"status":"ok","service":"api_gateway_dashboard","kafka":"kafka:9092","websocket_connections":1,"read_model":{"tasks_total":385,"workers_total":128,"tasks_by_status":{"pending":50,"assigned":11,"in_progress":9,"completed":312,"failed":3},"workers_by_status":{"available":124,"busy":4,"offline":0},"in_flight_tasks":20},"dedupe_cache":{"seen_event_ids":3338,"max_seen_events":5000}}

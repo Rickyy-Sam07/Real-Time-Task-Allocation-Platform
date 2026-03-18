@@ -19,7 +19,6 @@ from services.shared import (
     EventEnvelope,
     TaskAssignedPayload,
     TaskCreatedPayload,
-    TaskDLQPayload,
     TaskStatus,
     TaskUpdatedPayload,
     Topic,
@@ -498,7 +497,6 @@ async def consume_events_loop() -> None:
         Topic.TASK_UPDATED.value,
         Topic.TASK_ASSIGNED.value,
         Topic.WORKER_STATUS.value,
-        Topic.TASK_DLQ.value,
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         group_id="api-gateway-read-model",
         auto_offset_reset="earliest",
@@ -552,10 +550,6 @@ async def consume_events_loop() -> None:
                 existing["skills"] = payload.skills
                 existing["last_heartbeat"] = payload.heartbeat_at.isoformat()
                 workers[str(payload.worker_id)] = existing
-
-            elif envelope.topic == Topic.TASK_DLQ:
-                payload = TaskDLQPayload.model_validate(envelope.payload)
-                await persist_task_dlq(payload)
 
             await hub.broadcast({"topic": envelope.topic.value, "payload": envelope.payload})
     except asyncio.CancelledError:

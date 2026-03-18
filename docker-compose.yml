@@ -61,6 +61,16 @@ services:
     env_file:
       - .env.example
 
+  dlq_processor:
+    build:
+      context: .
+      dockerfile: services/dlq_processor/Dockerfile
+    depends_on:
+      - kafka
+      - postgres
+    env_file:
+      - .env.example
+
   worker:
     build:
       context: .
@@ -72,6 +82,8 @@ services:
       - .env.example
     environment:
       WORKER_EXECUTION_MODE: ${WORKER_EXECUTION_MODE:-normal}
+      WORKER_ZONE: ${WORKER_ZONE:-zone-a}
+      WORKER_SKILLS: ${WORKER_SKILLS:-rescue,medical}
       WORKER_MIN_EXEC_SEC: ${WORKER_MIN_EXEC_SEC:-1.0}
       WORKER_MAX_EXEC_SEC: ${WORKER_MAX_EXEC_SEC:-3.0}
       WORKER_FAILURE_RATE: ${WORKER_FAILURE_RATE:-0.1}

@@ -23,11 +23,13 @@ jobs:
       - name: Python Syntax Check
         run: |
           python -m py_compile services/api_gateway/main.py
+          python -m py_compile services/dlq_processor/main.py
           python -m py_compile services/scheduler/main.py
           python -m py_compile services/worker/main.py
           python -m py_compile scripts/load_generator.py
           python -m py_compile scripts/assert_integration_report.py
           bash -n scripts/check_dashboard_health.sh
+          bash -n scripts/check_worker_crash_reassignment.sh
 
       - name: Start Stack
         run: docker compose up --build -d
@@ -57,7 +59,7 @@ jobs:
 
       - name: Show Service Logs
         if: always()
-        run: docker compose logs --tail=200 api_gateway scheduler worker kafka postgres redis
+        run: docker compose logs --tail=200 api_gateway dlq_processor scheduler worker kafka postgres redis
 
       - name: Upload Reports
         if: always()
