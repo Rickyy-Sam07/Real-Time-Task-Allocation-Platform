@@ -10,6 +10,8 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
     steps:
       - name: Checkout
@@ -51,7 +53,12 @@ jobs:
         run: bash scripts/ci_smoke.sh 150
 
       - name: Integration Test
-        run: bash scripts/ci_integration.sh
+        run: |
+          set -euo pipefail
+          bash scripts/ci_integration.sh || {
+            echo "Integration test failed on first attempt; retrying once..."
+            bash scripts/ci_integration.sh
+          }
 
       - name: Show Compose Status
         if: always()

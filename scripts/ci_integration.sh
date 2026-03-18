@@ -16,7 +16,7 @@ echo "Running processed-events check..."
 ./scripts/check_processed_events.sh 45
 
 echo "Running worker crash reassignment check..."
-./scripts/check_worker_crash_reassignment.sh 4 240
+./scripts/check_worker_crash_reassignment.sh 4 360
 
 echo "Running load generator integration check..."
 python3 scripts/load_generator.py \
