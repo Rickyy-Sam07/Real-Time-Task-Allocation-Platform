@@ -6,7 +6,6 @@ set -euo pipefail
 # 2) Publish one task via API.
 # 3) Wait for both counters to increase.
 
-POSTGRES_CONTAINER="real-timedistributedtaskallocationsystem-postgres-1"
 POSTGRES_USER="task_user"
 POSTGRES_DB="task_alloc"
 API_URL="http://localhost:8000"
@@ -14,7 +13,7 @@ TIMEOUT_SEC="${1:-20}"
 
 get_count() {
   local consumer_name="$1"
-  docker exec "$POSTGRES_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA \
+  docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA \
     -c "SELECT COUNT(*) FROM processed_events WHERE consumer_name = '${consumer_name}';" | tr -d '[:space:]'
 }
 
