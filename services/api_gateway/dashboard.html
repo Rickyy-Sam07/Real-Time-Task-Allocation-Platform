@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task Allocation Live Board</title>
+  <style>
+    :root {
+      --bg-0: #fff8ee;
+      --bg-1: #f8e6cb;
+      --ink: #1f1b16;
+      --ink-soft: #5a4f42;
+      --panel: #fffdf8;
+      --line: #e6d5be;
+      --ok: #1d9a55;
+      --warn: #df8a00;
+      --bad: #d84848;
+      --accent: #00757a;
+      --shadow: 0 12px 34px rgba(40, 26, 5, 0.09);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 12%, #ffd99a 0%, transparent 28%),
+        radial-gradient(circle at 88% 2%, #ffbf8d 0%, transparent 24%),
+        linear-gradient(140deg, var(--bg-0), var(--bg-1));
+      min-height: 100vh;
+    }
+
+    .container {
+      width: min(1200px, 94vw);
+      margin: 24px auto 40px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+      animation: fadeSlide .5s ease both;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .title-panel {
+      padding: 18px 20px;
+      background:
+        linear-gradient(135deg, #ffefe0 0%, #fff8ee 100%);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.2rem, 2.3vw, 1.9rem);
+      letter-spacing: .02em;
+    }
+
+    .subtitle {
+      margin-top: 7px;
+      color: var(--ink-soft);
+      font-size: .95rem;
+    }
+
+    .status-pill {
+      margin-top: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--bad);
+      transition: background .2s;
+    }
+
+    .dot.connected { background: var(--ok); }
+
+    .clock-panel {
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: linear-gradient(180deg, #fffdf8 0%, #fff6e8 100%);
+    }
+
+    .clock {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: .03em;
+    }
+
+    .clock-label {
+      margin-top: 6px;
+      font-size: .82rem;
+      color: var(--ink-soft);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+      animation: fadeSlide .6s ease both;
+    }
+
+    .metric {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .metric .k {
+      font-size: 1.2rem;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .metric .l {
+      margin-top: 5px;
+      font-size: .78rem;
+      color: var(--ink-soft);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .charts {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 12px;
+      margin-bottom: 14px;
+      animation: fadeSlide .7s ease both;
+    }
+
+    .chart-panel {
+      padding: 14px;
+    }
+
+    .chart-title {
+      margin: 0 0 10px;
+      font-size: .95rem;
+      font-weight: 700;
+      color: var(--ink-soft);
+      text-transform: uppercase;
+      letter-spacing: .07em;
+    }
+
+    .bars {
+      height: 160px;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      padding: 6px 2px 0;
+      border-top: 1px dashed var(--line);
+      border-bottom: 1px dashed var(--line);
+    }
+
+    .bar-wrap {
+      flex: 1;
+      min-width: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .bar {
+      width: 100%;
+      border-radius: 8px 8px 2px 2px;
+      background: linear-gradient(180deg, #12a89f, #00757a);
+      min-height: 2px;
+      transition: height .2s;
+    }
+
+    .bar-label {
+      font-size: .7rem;
+      color: var(--ink-soft);
+    }
+
+    .dist-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 7px;
+    }
+
+    .dist-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      font-size: .86rem;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: #fff7eb;
+      border: 1px solid #f0dfc8;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 12px;
+      animation: fadeSlide .8s ease both;
+    }
+
+    .table-panel {
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    .table-wrap {
+      max-height: 340px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .84rem;
+    }
+
+    th, td {
+      padding: 8px 9px;
+      border-bottom: 1px solid #f2e6d6;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #fff5e7;
+      color: var(--ink-soft);
+      text-transform: uppercase;
+      font-size: .7rem;
+      letter-spacing: .06em;
+    }
+
+    .status {
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: .72rem;
+      letter-spacing: .05em;
+    }
+
+    .pending { color: var(--warn); }
+    .assigned, .in_progress { color: var(--accent); }
+    .completed { color: var(--ok); }
+    .failed { color: var(--bad); }
+
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 980px) {
+      .hero { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(3, 1fr); }
+      .charts, .grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 620px) {
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .container { width: 96vw; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="hero">
+      <div class="panel title-panel">
+        <h1>Real-Time Task Allocation Live Board</h1>
+        <div class="subtitle">Streaming scheduler and worker lifecycle updates from websocket events.</div>
+        <div class="status-pill"><span id="wsDot" class="dot"></span><span id="wsText">Connecting...</span></div>
+      </div>
+      <div class="panel clock-panel">
+        <div id="clock" class="clock">--:--:--</div>
+        <div class="clock-label">Local Dashboard Time</div>
+      </div>
+    </section>
+
+    <section class="metrics">
+      <div class="metric"><div id="mTotal" class="k">0</div><div class="l">Total Tasks</div></div>
+      <div class="metric"><div id="mPending" class="k">0</div><div class="l">Pending</div></div>
+      <div class="metric"><div id="mInFlight" class="k">0</div><div class="l">In Flight</div></div>
+      <div class="metric"><div id="mDone" class="k">0</div><div class="l">Completed</div></div>
+      <div class="metric"><div id="mFailed" class="k">0</div><div class="l">Failed</div></div>
+      <div class="metric"><div id="mThroughput" class="k">0</div><div class="l">Completions / min</div></div>
+    </section>
+
+    <section class="charts">
+      <div class="panel chart-panel">
+        <h3 class="chart-title">Completion Trend (Last 10 Minutes)</h3>
+        <div id="bars" class="bars"></div>
+      </div>
+      <div class="panel chart-panel">
+        <h3 class="chart-title">Worker Distribution</h3>
+        <ul id="dist" class="dist-list"></ul>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="panel table-panel">
+        <h3 class="chart-title">Tasks</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th>Worker</th>
+                <th>Updated</th>
+              </tr>
+            </thead>
+            <tbody id="tasksBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel table-panel">
+        <h3 class="chart-title">Workers</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Worker</th>
+                <th>Status</th>
+                <th>Zone</th>
+                <th>Skills</th>
+                <th>Heartbeat</th>
+              </tr>
+            </thead>
+            <tbody id="workersBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const tasks = new Map();
+    const workers = new Map();
+    const completedTimestamps = [];
+
+    const wsDot = document.getElementById("wsDot");
+    const wsText = document.getElementById("wsText");
+
+    const fmtShort = (value) => {
+      if (!value) return "-";
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return "-";
+      return d.toLocaleTimeString();
+    };
+
+    function tickClock() {
+      const now = new Date();
+      document.getElementById("clock").textContent = now.toLocaleTimeString();
+    }
+
+    function trimWorker(workerId) {
+      return workerId ? String(workerId).slice(0, 8) : "-";
+    }
+
+    function addCompletion(tsIso) {
+      const ts = tsIso ? Date.parse(tsIso) : Date.now();
+      if (!Number.isNaN(ts)) completedTimestamps.push(ts);
+      const cutoff = Date.now() - 10 * 60 * 1000;
+      while (completedTimestamps.length && completedTimestamps[0] < cutoff) {
+        completedTimestamps.shift();
+      }
+    }
+
+    function metrics() {
+      let pending = 0;
+      let inflight = 0;
+      let completed = 0;
+      let failed = 0;
+
+      for (const task of tasks.values()) {
+        const status = task.status;
+        if (status === "pending") pending += 1;
+        else if (status === "assigned" || status === "in_progress") inflight += 1;
+        else if (status === "completed") completed += 1;
+        else if (status === "failed") failed += 1;
+      }
+
+      const now = Date.now();
+      const minuteCutoff = now - 60 * 1000;
+      const perMinute = completedTimestamps.filter((t) => t >= minuteCutoff).length;
+
+      document.getElementById("mTotal").textContent = String(tasks.size);
+      document.getElementById("mPending").textContent = String(pending);
+      document.getElementById("mInFlight").textContent = String(inflight);
+      document.getElementById("mDone").textContent = String(completed);
+      document.getElementById("mFailed").textContent = String(failed);
+      document.getElementById("mThroughput").textContent = String(perMinute);
+    }
+
+    function renderTrend() {
+      const container = document.getElementById("bars");
+      const now = Date.now();
+      const buckets = [];
+
+      for (let i = 9; i >= 0; i--) {
+        const start = now - (i + 1) * 60 * 1000;
+        const end = now - i * 60 * 1000;
+        const count = completedTimestamps.filter((t) => t >= start && t < end).length;
+        buckets.push(count);
+      }
+
+      const maxVal = Math.max(1, ...buckets);
+      container.innerHTML = "";
+      buckets.forEach((count, idx) => {
+        const wrap = document.createElement("div");
+        wrap.className = "bar-wrap";
+
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        bar.style.height = `${Math.round((count / maxVal) * 140) + 4}px`;
+
+        const label = document.createElement("div");
+        label.className = "bar-label";
+        label.textContent = `${9 - idx}m`;
+
+        wrap.appendChild(bar);
+        wrap.appendChild(label);
+        container.appendChild(wrap);
+      });
+    }
+
+    function renderWorkerDistribution() {
+      const counts = {};
+      for (const task of tasks.values()) {
+        if (!task.worker_id) continue;
+        const key = trimWorker(task.worker_id);
+        counts[key] = (counts[key] || 0) + 1;
+      }
+
+      const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+      const list = document.getElementById("dist");
+      list.innerHTML = "";
+
+      if (!entries.length) {
+        const li = document.createElement("li");
+        li.className = "dist-item";
+        li.innerHTML = "<span>No assignments yet</span><strong>0</strong>";
+        list.appendChild(li);
+        return;
+      }
+
+      for (const [worker, count] of entries) {
+        const li = document.createElement("li");
+        li.className = "dist-item";
+        li.innerHTML = `<span>${worker}</span><strong>${count}</strong>`;
+        list.appendChild(li);
+      }
+    }
+
+    function renderTasks() {
+      const rows = Array.from(tasks.values())
+        .sort((a, b) => {
+          const ad = Date.parse(a.updated_at || a.created_at || 0) || 0;
+          const bd = Date.parse(b.updated_at || b.created_at || 0) || 0;
+          return bd - ad;
+        })
+        .slice(0, 200);
+
+      const body = document.getElementById("tasksBody");
+      body.innerHTML = "";
+
+      for (const task of rows) {
+        const tr = document.createElement("tr");
+        const status = task.status || "unknown";
+        tr.innerHTML = `
+          <td>${String(task.task_id || "").slice(0, 8)}</td>
+          <td><span class="status ${status}">${status}</span></td>
+          <td>${task.priority ?? "-"}</td>
+          <td>${trimWorker(task.worker_id)}</td>
+          <td>${fmtShort(task.updated_at || task.created_at)}</td>
+        `;
+        body.appendChild(tr);
+      }
+    }
+
+    function renderWorkers() {
+      const rows = Array.from(workers.values())
+        .sort((a, b) => {
+          const ad = Date.parse(a.last_heartbeat || 0) || 0;
+          const bd = Date.parse(b.last_heartbeat || 0) || 0;
+          return bd - ad;
+        })
+        .slice(0, 100);
+
+      const body = document.getElementById("workersBody");
+      body.innerHTML = "";
+
+      for (const worker of rows) {
+        const status = worker.status || "unknown";
+        const skills = Array.isArray(worker.skills) ? worker.skills.join(",") : "";
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${trimWorker(worker.worker_id)}</td>
+          <td><span class="status ${status}">${status}</span></td>
+          <td>${worker.location_zone || "-"}</td>
+          <td title="${skills}">${skills || "-"}</td>
+          <td>${fmtShort(worker.last_heartbeat)}</td>
+        `;
+        body.appendChild(tr);
+      }
+    }
+
+    function renderAll() {
+      metrics();
+      renderTrend();
+      renderWorkerDistribution();
+      renderTasks();
+      renderWorkers();
+    }
+
+    function upsertTask(payload) {
+      const id = payload.task_id;
+      if (!id) return;
+      const existing = tasks.get(id) || { task_id: id };
+      tasks.set(id, { ...existing, ...payload });
+
+      if (payload.status === "completed") {
+        addCompletion(payload.updated_at || payload.completed_at || new Date().toISOString());
+      }
+    }
+
+    function upsertWorker(payload) {
+      const id = payload.worker_id;
+      if (!id) return;
+      const existing = workers.get(id) || { worker_id: id };
+      workers.set(id, { ...existing, ...payload });
+    }
+
+    function connect() {
+      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${protocol}://${window.location.host}/ws/dashboard`);
+
+      ws.onopen = () => {
+        wsDot.classList.add("connected");
+        wsText.textContent = "Live";
+      };
+
+      ws.onclose = () => {
+        wsDot.classList.remove("connected");
+        wsText.textContent = "Reconnecting...";
+        setTimeout(connect, 1200);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          const topic = msg.topic;
+          const payload = msg.payload || {};
+
+          if (topic === "snapshot") {
+            (payload.tasks || []).forEach(upsertTask);
+            (payload.workers || []).forEach(upsertWorker);
+            renderAll();
+            return;
+          }
+
+          if (topic === "task_created" || topic === "task_updated" || topic === "task_assigned") {
+            upsertTask(payload);
+          } else if (topic === "worker_status") {
+            upsertWorker(payload);
+          }
+
+          renderAll();
+        } catch (_e) {
+          // Ignore malformed event payloads in dashboard runtime.
+        }
+      };
+    }
+
+    tickClock();
+    setInterval(tickClock, 1000);
+    setInterval(renderAll, 5000);
+    connect();
+  </script>
+</body>
+</html>

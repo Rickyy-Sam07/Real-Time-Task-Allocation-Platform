@@ -29,6 +29,12 @@
 3. Add integration tests for worker crash and task reassignment paths.
 4. Add dead-letter replay endpoint/workflow for operator-triggered retry.
 
+## Delivery Hardening Scope
+1. Completed: baseline GitHub Actions CI workflow (`.github/workflows/ci.yml`).
+2. Completed: automated smoke and integration scripts (`scripts/ci_smoke.sh`, `scripts/ci_integration.sh`).
+3. Remaining: add unit tests and richer integration assertions beyond status checks.
+4. Remaining: add architecture/sequence diagram artifacts and demo runbook.
+
 ## Scaling Demo
 1. Completed: baseline load generator script (`scripts/load_generator.py`).
 2. Completed: scaling demo runner with JSON reporting (`scripts/run_scaling_demo.sh`).

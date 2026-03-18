@@ -31,6 +31,10 @@ Kafka-first, event-driven platform for real-time disaster/NGO task allocation.
    - curl http://localhost:8000/health
 5. Open API docs:
    - http://localhost:8000/docs
+6. Open live dashboard:
+   - http://localhost:8000/dashboard
+7. Check dashboard health JSON:
+   - curl http://localhost:8000/dashboard/health
 
 ## Useful Commands
 - Stop services:
@@ -81,6 +85,21 @@ Kafka-first, event-driven platform for real-time disaster/NGO task allocation.
    - Example: ./scripts/run_scaling_demo.sh 500 5 420 compatible
 - Reports are written to:
    - docs/reports/
+
+## CI And Automated Checks
+- GitHub Actions workflow:
+   - .github/workflows/ci.yml
+- Local smoke check script:
+   - bash scripts/ci_smoke.sh
+- Local integration check script:
+   - bash scripts/ci_integration.sh
+- CI pipeline coverage:
+   - Python syntax validation
+   - Docker Compose stack startup
+   - API and dashboard health validation
+   - Smoke task lifecycle check
+   - Processed-events check and load-generator integration run
+   - Report artifact upload from docs/reports/
 
 ## Project Structure
 - services/api_gateway: FastAPI HTTP and WebSocket entrypoint.

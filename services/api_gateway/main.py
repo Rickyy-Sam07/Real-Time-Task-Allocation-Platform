@@ -5,12 +5,14 @@ import json
 import os
 from collections import deque
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 import asyncpg
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from services.shared import (
@@ -36,6 +38,7 @@ seen_event_ids: set[UUID] = set()
 seen_event_order: deque[UUID] = deque()
 MAX_SEEN_EVENTS = int(os.getenv("API_MAX_SEEN_EVENTS", "5000"))
 API_READ_MODEL_CONSUMER = "api_gateway_read_model"
+DASHBOARD_HTML_PATH = Path(__file__).with_name("dashboard.html")
 
 # In-memory read model for the first implementation slice.
 tasks: dict[str, dict[str, Any]] = {}
@@ -396,6 +399,34 @@ def _on_consumer_task_done(task: asyncio.Task[None]) -> None:
         print(f"[api_gateway] read-model consumer task failed: {exc}")
 
 
+def _task_status_counts() -> dict[str, int]:
+    counts = {
+        TaskStatus.PENDING.value: 0,
+        TaskStatus.ASSIGNED.value: 0,
+        TaskStatus.IN_PROGRESS.value: 0,
+        TaskStatus.COMPLETED.value: 0,
+        TaskStatus.FAILED.value: 0,
+    }
+    for task in tasks.values():
+        status = task.get("status")
+        if isinstance(status, str) and status in counts:
+            counts[status] += 1
+    return counts
+
+
+def _worker_status_counts() -> dict[str, int]:
+    counts = {
+        WorkerStatus.AVAILABLE.value: 0,
+        WorkerStatus.BUSY.value: 0,
+        WorkerStatus.OFFLINE.value: 0,
+    }
+    for worker in workers.values():
+        status = worker.get("status")
+        if isinstance(status, str) and status in counts:
+            counts[status] += 1
+    return counts
+
+
 @app.on_event("startup")
 async def startup_event() -> None:
     global producer, db_pool, event_consumer_task
@@ -543,6 +574,36 @@ async def dashboard_socket(websocket: WebSocket) -> None:
         hub.disconnect(websocket)
     except Exception:
         hub.disconnect(websocket)
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page() -> HTMLResponse:
+    html = DASHBOARD_HTML_PATH.read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
+
+
+@app.get("/dashboard/health")
+async def dashboard_health() -> dict[str, Any]:
+    task_counts = _task_status_counts()
+    worker_counts = _worker_status_counts()
+    in_flight = task_counts[TaskStatus.ASSIGNED.value] + task_counts[TaskStatus.IN_PROGRESS.value]
+    return {
+        "status": "ok",
+        "service": "api_gateway_dashboard",
+        "kafka": KAFKA_BOOTSTRAP_SERVERS,
+        "websocket_connections": len(hub.connections),
+        "read_model": {
+            "tasks_total": len(tasks),
+            "workers_total": len(workers),
+            "tasks_by_status": task_counts,
+            "workers_by_status": worker_counts,
+            "in_flight_tasks": in_flight,
+        },
+        "dedupe_cache": {
+            "seen_event_ids": len(seen_event_ids),
+            "max_seen_events": MAX_SEEN_EVENTS,
+        },
+    }
 
 
 @app.get("/health")

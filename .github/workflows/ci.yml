@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python Syntax Check
+        run: |
+          python -m py_compile services/api_gateway/main.py
+          python -m py_compile services/scheduler/main.py
+          python -m py_compile services/worker/main.py
+          python -m py_compile scripts/load_generator.py
+          bash -n scripts/check_dashboard_health.sh
+
+      - name: Start Stack
+        run: docker compose up --build -d
+
+      - name: Wait For API Health
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8000/health >/dev/null; then
+              echo "API is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become healthy in time"
+          exit 1
+
+      - name: Smoke Test
+        run: bash scripts/ci_smoke.sh 150
+
+      - name: Integration Test
+        run: bash scripts/ci_integration.sh
+
+      - name: Show Compose Status
+        if: always()
+        run: docker compose ps -a
+
+      - name: Show Service Logs
+        if: always()
+        run: docker compose logs --tail=200 api_gateway scheduler worker kafka postgres redis
+
+      - name: Upload Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-reports
+          path: docs/reports/*.json
+          if-no-files-found: ignore
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v

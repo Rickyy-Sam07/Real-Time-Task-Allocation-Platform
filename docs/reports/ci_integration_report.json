@@ -1,0 +1,19 @@
+{
+  "submitted": 25,
+  "observed": 25,
+  "elapsed_sec": 72.606,
+  "status_counts": {
+    "completed": 25
+  },
+  "pending_or_inflight": 0,
+  "worker_distribution": {
+    "4723df7d-753f-48e9-b28c-c2d4e407aae1": 13,
+    "0dc6d443-d44d-42f8-a843-f14f651c9da5": 12
+  },
+  "latency_ms": {
+    "count": 25,
+    "avg": 34405.58,
+    "p50": 34452.25,
+    "max": 71452.54
+  }
+}
