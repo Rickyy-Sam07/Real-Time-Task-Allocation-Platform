@@ -25,4 +25,7 @@ python3 scripts/load_generator.py \
   --skill-mode compatible \
   --out "${REPORT_PATH}"
 
+echo "Asserting integration report quality gates..."
+python3 scripts/assert_integration_report.py --report "${REPORT_PATH}"
+
 echo "PASS: integration checks completed"

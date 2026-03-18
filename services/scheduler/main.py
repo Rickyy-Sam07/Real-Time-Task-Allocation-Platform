@@ -58,9 +58,12 @@ class Scheduler:
         self._seen_event_order: deque[UUID] = deque()
         self._max_seen_events = int(os.getenv("SCHEDULER_MAX_SEEN_EVENTS", "5000"))
         self.heartbeat_timeout_sec = int(os.getenv("WORKER_HEARTBEAT_TIMEOUT_SEC", "15"))
+        self.maintenance_interval_sec = float(os.getenv("SCHEDULER_MAINTENANCE_INTERVAL_SEC", "1.0"))
         self.db_pool: asyncpg.Pool | None = None
         self.consumer: AIOKafkaConsumer | None = None
         self.producer: AIOKafkaProducer | None = None
+        self.maintenance_task: asyncio.Task[None] | None = None
+        self._state_lock = asyncio.Lock()
 
     async def _ensure_tables(self) -> None:
         assert self.db_pool is not None
@@ -81,6 +84,160 @@ class Scheduler:
                 ON processed_events(consumer_name)
                 """
             )
+            await conn.execute(
+                """
+                UPDATE assignments a
+                SET status = t.status,
+                    completed_at = CASE
+                        WHEN t.status IN ('completed', 'failed') THEN COALESCE(a.completed_at, NOW())
+                        ELSE a.completed_at
+                    END,
+                    failure_reason = CASE
+                        WHEN t.status = 'failed' THEN COALESCE(a.failure_reason, 'task_failed')
+                        ELSE a.failure_reason
+                    END
+                FROM tasks t
+                WHERE a.task_id = t.id
+                  AND a.status IN ('assigned', 'in_progress')
+                  AND t.status IN ('completed', 'failed')
+                """
+            )
+            await conn.execute(
+                """
+                WITH ranked AS (
+                    SELECT id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY task_id
+                               ORDER BY assigned_at DESC, id DESC
+                           ) AS row_num
+                    FROM assignments
+                    WHERE status IN ('assigned', 'in_progress')
+                )
+                UPDATE assignments a
+                SET status = 'failed',
+                    completed_at = COALESCE(a.completed_at, NOW()),
+                    failure_reason = COALESCE(a.failure_reason, 'scheduler_backfill_duplicate_active')
+                FROM ranked r
+                WHERE a.id = r.id
+                  AND r.row_num > 1
+                """
+            )
+            await conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_assignments_task_active_unique
+                ON assignments(task_id)
+                WHERE status IN ('assigned', 'in_progress')
+                """
+            )
+
+    async def _set_assignment_in_progress(self, update: TaskUpdatedPayload) -> None:
+        assert self.db_pool is not None
+        async with self.db_pool.acquire() as conn:
+            await conn.execute(
+                """
+                WITH latest AS (
+                    SELECT id
+                    FROM assignments
+                    WHERE task_id = $1
+                      AND ($2::uuid IS NULL OR worker_id = $2)
+                      AND status = 'assigned'
+                    ORDER BY assigned_at DESC
+                    LIMIT 1
+                )
+                UPDATE assignments a
+                SET status = 'in_progress',
+                    started_at = COALESCE(a.started_at, NOW())
+                FROM latest
+                WHERE a.id = latest.id
+                """,
+                update.task_id,
+                update.worker_id,
+            )
+
+    async def _set_assignment_terminal(self, update: TaskUpdatedPayload) -> None:
+        assert self.db_pool is not None
+        failure_reason = update.failure_reason if update.status == TaskStatus.FAILED else None
+        async with self.db_pool.acquire() as conn:
+            await conn.execute(
+                """
+                WITH latest AS (
+                    SELECT id
+                    FROM assignments
+                    WHERE task_id = $1
+                      AND ($2::uuid IS NULL OR worker_id = $2)
+                      AND status IN ('assigned', 'in_progress')
+                    ORDER BY assigned_at DESC
+                    LIMIT 1
+                )
+                UPDATE assignments a
+                SET status = $3,
+                    completed_at = NOW(),
+                    failure_reason = $4
+                FROM latest
+                WHERE a.id = latest.id
+                """,
+                update.task_id,
+                update.worker_id,
+                update.status.value,
+                failure_reason,
+            )
+
+    async def _reserve_assignment(self, worker: WorkerState, task_payload: dict[str, Any]) -> TaskAssignedPayload | None:
+        assert self.db_pool is not None
+        task_id = UUID(task_payload["task_id"])
+        assigned_payload = TaskAssignedPayload(
+            assignment_id=uuid4(),
+            task_id=task_id,
+            worker_id=worker.worker_id,
+        )
+        assigned_at = assigned_payload.assigned_at.replace(tzinfo=None)
+
+        async with self.db_pool.acquire() as conn:
+            async with conn.transaction():
+                task_row = await conn.fetchrow(
+                    """
+                    SELECT status
+                    FROM tasks
+                    WHERE id = $1
+                    FOR UPDATE
+                    """,
+                    task_id,
+                )
+                if task_row is None:
+                    return None
+
+                current_status = task_row["status"]
+                if current_status not in (TaskStatus.PENDING.value, TaskStatus.FAILED.value):
+                    return None
+
+                inserted = await conn.fetchval(
+                    """
+                    INSERT INTO assignments (id, task_id, worker_id, status, assigned_at)
+                    VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT DO NOTHING
+                    RETURNING id
+                    """,
+                    assigned_payload.assignment_id,
+                    assigned_payload.task_id,
+                    assigned_payload.worker_id,
+                    TaskStatus.ASSIGNED.value,
+                    assigned_at,
+                )
+                if inserted is None:
+                    return None
+
+                await conn.execute(
+                    """
+                    UPDATE tasks
+                    SET status = $2,
+                        updated_at = NOW()
+                    WHERE id = $1
+                    """,
+                    task_id,
+                    TaskStatus.ASSIGNED.value,
+                )
+
+        return assigned_payload
 
     async def _claim_event(self, envelope: EventEnvelope) -> bool:
         assert self.db_pool is not None
@@ -142,9 +299,17 @@ class Scheduler:
                 await asyncio.sleep(2)
 
         print("[scheduler] started")
+        self.maintenance_task = asyncio.create_task(self._maintenance_loop())
         try:
             await self.run()
         finally:
+            if self.maintenance_task is not None:
+                self.maintenance_task.cancel()
+                try:
+                    await self.maintenance_task
+                except asyncio.CancelledError:
+                    pass
+
             if self.consumer is not None:
                 await self.consumer.stop()
             if self.producer is not None:
@@ -153,31 +318,40 @@ class Scheduler:
                 await self.db_pool.close()
                 self.db_pool = None
 
+    async def _maintenance_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self.maintenance_interval_sec)
+            async with self._state_lock:
+                self._refresh_worker_liveness()
+                await self.assign_pending_tasks()
+
     async def run(self) -> None:
         assert self.consumer is not None
         async for msg in self.consumer:
             raw = msg.value.decode("utf-8")
             envelope = EventEnvelope.model_validate_json(raw)
 
-            if self._is_duplicate_event(envelope.event_id):
-                continue
+            async with self._state_lock:
+                if self._is_duplicate_event(envelope.event_id):
+                    continue
 
-            if not await self._claim_event(envelope):
-                continue
+                if not await self._claim_event(envelope):
+                    continue
 
-            if envelope.topic == Topic.WORKER_STATUS:
-                await self._on_worker_status(envelope.payload)
-            elif envelope.topic == Topic.TASK_CREATED:
-                await self._on_task_created(envelope.payload)
-            elif envelope.topic == Topic.TASK_UPDATED:
-                await self._on_task_updated(envelope.payload)
+                if envelope.topic == Topic.WORKER_STATUS:
+                    await self._on_worker_status(envelope.payload)
+                elif envelope.topic == Topic.TASK_CREATED:
+                    await self._on_task_created(envelope.payload)
+                elif envelope.topic == Topic.TASK_UPDATED:
+                    await self._on_task_updated(envelope.payload)
 
-            self._refresh_worker_liveness()
-            await self.assign_pending_tasks()
+                self._refresh_worker_liveness()
+                await self.assign_pending_tasks()
 
     async def _on_task_created(self, payload: dict[str, Any]) -> None:
         task_id = UUID(payload["task_id"])
         self.task_catalog[task_id] = payload
+        self.task_retries[task_id] = 0
         priority = int(payload["priority"])
         now_ts = datetime.now(timezone.utc).timestamp()
         heapq.heappush(self.pending, (-priority, now_ts, now_ts, payload))
@@ -197,6 +371,13 @@ class Scheduler:
     async def _on_task_updated(self, payload: dict[str, Any]) -> None:
         task_update = TaskUpdatedPayload.model_validate(payload)
         task_id = task_update.task_id
+
+        if task_update.status == TaskStatus.IN_PROGRESS:
+            await self._set_assignment_in_progress(task_update)
+            return
+
+        if task_update.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+            await self._set_assignment_terminal(task_update)
 
         if task_update.status == TaskStatus.COMPLETED:
             self.task_catalog.pop(task_id, None)
@@ -261,10 +442,16 @@ class Scheduler:
     def select_worker(self, task_payload: dict[str, Any]) -> WorkerState | None:
         required_skills = set(task_payload.get("skills_required", []))
         zone = task_payload.get("location_zone")
+        now = datetime.now(timezone.utc)
 
         candidates: list[WorkerState] = []
         for worker in self.workers.values():
             if worker.status != WorkerStatus.AVAILABLE:
+                continue
+            if worker.active_task_id is not None:
+                continue
+            elapsed = (now - worker.heartbeat_at).total_seconds()
+            if elapsed > self.heartbeat_timeout_sec:
                 continue
             if required_skills and not required_skills.issubset(set(worker.skills)):
                 continue
@@ -324,11 +511,10 @@ class Scheduler:
 
     async def _assign(self, worker: WorkerState, task_payload: dict[str, Any]) -> None:
         assert self.producer is not None
-        assignment_payload = TaskAssignedPayload(
-            assignment_id=uuid4(),
-            task_id=UUID(task_payload["task_id"]),
-            worker_id=worker.worker_id,
-        )
+        assignment_payload = await self._reserve_assignment(worker, task_payload)
+        if assignment_payload is None:
+            return
+
         event = EventEnvelope(topic=Topic.TASK_ASSIGNED, payload=assignment_payload.model_dump(mode="json"))
         await self.producer.send_and_wait(Topic.TASK_ASSIGNED.value, event.model_dump_json().encode("utf-8"))
         worker.status = WorkerStatus.BUSY

@@ -19,6 +19,7 @@ from services.shared import (
     EventEnvelope,
     TaskAssignedPayload,
     TaskCreatedPayload,
+    TaskDLQPayload,
     TaskStatus,
     TaskUpdatedPayload,
     Topic,
@@ -99,6 +100,12 @@ class TaskUpdateRequest(BaseModel):
     status: TaskStatus
     worker_id: UUID | None = None
     failure_reason: str | None = None
+
+
+class DLQReplayRequest(BaseModel):
+    task_id: UUID
+    priority_bump: int = Field(default=0, ge=0, le=4)
+    replay_note: str | None = None
 
 
 def _postgres_dsn() -> str:
@@ -267,6 +274,171 @@ async def ensure_processed_events_table() -> None:
             ON processed_events(consumer_name)
             """
         )
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS task_dlq (
+              task_id UUID PRIMARY KEY,
+              reason TEXT NOT NULL,
+              retry_count INT NOT NULL,
+              max_retries INT NOT NULL,
+              worker_id UUID,
+              failed_at TIMESTAMP NOT NULL,
+              replayed BOOLEAN NOT NULL DEFAULT FALSE,
+              replayed_at TIMESTAMP,
+              replay_note TEXT,
+              created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+              updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+
+
+async def persist_task_dlq(payload: TaskDLQPayload) -> None:
+    pool = _ensure_pool()
+    failed_at = payload.failed_at.replace(tzinfo=None)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO task_dlq (
+                task_id, reason, retry_count, max_retries, worker_id, failed_at, replayed, replayed_at, replay_note, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, FALSE, NULL, NULL, NOW())
+            ON CONFLICT (task_id)
+            DO UPDATE SET
+                reason = EXCLUDED.reason,
+                retry_count = EXCLUDED.retry_count,
+                max_retries = EXCLUDED.max_retries,
+                worker_id = EXCLUDED.worker_id,
+                failed_at = EXCLUDED.failed_at,
+                replayed = FALSE,
+                replayed_at = NULL,
+                replay_note = NULL,
+                updated_at = NOW()
+            """,
+            payload.task_id,
+            payload.reason,
+            payload.retry_count,
+            payload.max_retries,
+            payload.worker_id,
+            failed_at,
+        )
+
+
+async def list_dlq_entries(limit: int = 100) -> list[dict[str, Any]]:
+    pool = _ensure_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT task_id, reason, retry_count, max_retries, worker_id, failed_at, replayed, replayed_at, replay_note, updated_at
+            FROM task_dlq
+            ORDER BY failed_at DESC
+            LIMIT $1
+            """,
+            limit,
+        )
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        out.append(
+            {
+                "task_id": str(row["task_id"]),
+                "reason": row["reason"],
+                "retry_count": row["retry_count"],
+                "max_retries": row["max_retries"],
+                "worker_id": str(row["worker_id"]) if row["worker_id"] else None,
+                "failed_at": row["failed_at"].isoformat() if row["failed_at"] else None,
+                "replayed": row["replayed"],
+                "replayed_at": row["replayed_at"].isoformat() if row["replayed_at"] else None,
+                "replay_note": row["replay_note"],
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+            }
+        )
+    return out
+
+
+async def replay_dlq_task(request: DLQReplayRequest) -> dict[str, Any]:
+    pool = _ensure_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            dlq_row = await conn.fetchrow(
+                """
+                SELECT task_id, reason, retry_count, max_retries, replayed
+                FROM task_dlq
+                WHERE task_id = $1
+                FOR UPDATE
+                """,
+                request.task_id,
+            )
+            if dlq_row is None:
+                raise HTTPException(status_code=404, detail="dlq task not found")
+            if dlq_row["replayed"]:
+                raise HTTPException(status_code=409, detail="dlq task already replayed")
+
+            task_row = await conn.fetchrow(
+                """
+                SELECT id, priority, estimated_duration_sec, location_zone, skills_required
+                FROM tasks
+                WHERE id = $1
+                FOR UPDATE
+                """,
+                request.task_id,
+            )
+            if task_row is None:
+                raise HTTPException(status_code=404, detail="task not found")
+
+            new_priority = min(5, int(task_row["priority"]) + int(request.priority_bump))
+
+            await conn.execute(
+                """
+                UPDATE tasks
+                SET status = $2,
+                    priority = $3,
+                    retry_count = 0,
+                    updated_at = NOW()
+                WHERE id = $1
+                """,
+                request.task_id,
+                TaskStatus.PENDING.value,
+                new_priority,
+            )
+
+            await conn.execute(
+                """
+                UPDATE task_dlq
+                SET replayed = TRUE,
+                    replayed_at = NOW(),
+                    replay_note = $2,
+                    updated_at = NOW()
+                WHERE task_id = $1
+                """,
+                request.task_id,
+                request.replay_note,
+            )
+
+    payload = TaskCreatedPayload(
+        task_id=request.task_id,
+        priority=new_priority,
+        estimated_duration_sec=int(task_row["estimated_duration_sec"]),
+        location_zone=task_row["location_zone"],
+        skills_required=task_row["skills_required"] or [],
+        max_retries=int(dlq_row["max_retries"]),
+    )
+    await publish_event(Topic.TASK_CREATED, payload.model_dump(mode="json"))
+
+    tasks[str(request.task_id)] = {
+        "task_id": str(request.task_id),
+        "priority": new_priority,
+        "status": TaskStatus.PENDING.value,
+        "worker_id": None,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    return {
+        "message": "replayed",
+        "task_id": str(request.task_id),
+        "priority": new_priority,
+        "max_retries": int(dlq_row["max_retries"]),
+    }
 
 
 async def claim_event(envelope: EventEnvelope) -> bool:
@@ -326,6 +498,7 @@ async def consume_events_loop() -> None:
         Topic.TASK_UPDATED.value,
         Topic.TASK_ASSIGNED.value,
         Topic.WORKER_STATUS.value,
+        Topic.TASK_DLQ.value,
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
         group_id="api-gateway-read-model",
         auto_offset_reset="earliest",
@@ -379,6 +552,10 @@ async def consume_events_loop() -> None:
                 existing["skills"] = payload.skills
                 existing["last_heartbeat"] = payload.heartbeat_at.isoformat()
                 workers[str(payload.worker_id)] = existing
+
+            elif envelope.topic == Topic.TASK_DLQ:
+                payload = TaskDLQPayload.model_validate(envelope.payload)
+                await persist_task_dlq(payload)
 
             await hub.broadcast({"topic": envelope.topic.value, "payload": envelope.payload})
     except asyncio.CancelledError:
@@ -553,6 +730,17 @@ async def update_task(request: TaskUpdateRequest) -> dict[str, str]:
     await persist_task_update(payload)
     await publish_event(Topic.TASK_UPDATED, payload.model_dump(mode="json"))
     return {"message": "accepted"}
+
+
+@app.get("/dlq/tasks")
+async def get_dlq_tasks(limit: int = 100) -> list[dict[str, Any]]:
+    clamped_limit = min(500, max(1, limit))
+    return await list_dlq_entries(limit=clamped_limit)
+
+
+@app.post("/dlq/replay")
+async def replay_dlq(request: DLQReplayRequest) -> dict[str, Any]:
+    return await replay_dlq_task(request)
 
 
 @app.websocket("/ws/dashboard")

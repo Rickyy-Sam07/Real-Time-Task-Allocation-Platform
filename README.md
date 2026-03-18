@@ -58,6 +58,15 @@ Kafka-first, event-driven platform for real-time disaster/NGO task allocation.
    - PASS: counts increased
    - After: api_gateway_read_model=67, scheduler=65
 
+## DLQ Operator Workflow
+- List DLQ entries:
+   - curl http://localhost:8000/dlq/tasks
+- Replay a DLQ task (optional priority bump):
+   - curl -X POST http://localhost:8000/dlq/replay -H "Content-Type: application/json" -d '{"task_id":"<uuid>","priority_bump":1,"replay_note":"manual replay"}'
+- Behavior:
+   - Marks the DLQ row as replayed with timestamp and note.
+   - Resets the task to `pending` and republishes `task_created` for scheduler reassignment.
+
 ## Worker Simulation Modes
 - Configure behavior with `WORKER_EXECUTION_MODE` in `.env`:
    - `normal`: random duration and failure using `WORKER_MIN_EXEC_SEC`, `WORKER_MAX_EXEC_SEC`, `WORKER_FAILURE_RATE`.
@@ -110,7 +119,6 @@ Kafka-first, event-driven platform for real-time disaster/NGO task allocation.
 - docs/implementation_next_steps.md: implementation notes.
 
 ## Next Milestones
-- Add durable scheduler state transitions in PostgreSQL.
-- Implement retry, DLQ, and reassignment orchestration.
-- Add integration tests for end-to-end event flow.
-- Build operator-facing dashboard views and metrics.
+- Add scheduler fairness scoring (load and least-recently-assigned tie-break).
+- Add deeper integration and failure-path tests for crash/reassignment scenarios.
+- Build operator-facing dashboard controls and advanced metrics (failure/retry/DLQ).

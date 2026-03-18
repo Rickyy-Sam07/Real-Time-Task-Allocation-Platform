@@ -46,8 +46,26 @@ CREATE TABLE IF NOT EXISTS processed_events (
   PRIMARY KEY (consumer_name, event_id)
 );
 
+CREATE TABLE IF NOT EXISTS task_dlq (
+  task_id UUID PRIMARY KEY,
+  reason TEXT NOT NULL,
+  retry_count INT NOT NULL,
+  max_retries INT NOT NULL,
+  worker_id UUID,
+  failed_at TIMESTAMP NOT NULL,
+  replayed BOOLEAN NOT NULL DEFAULT FALSE,
+  replayed_at TIMESTAMP,
+  replay_note TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority DESC);
 CREATE INDEX IF NOT EXISTS idx_workers_status ON workers(status);
 CREATE INDEX IF NOT EXISTS idx_assignments_worker_id ON assignments(worker_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_assignments_task_active_unique
+  ON assignments(task_id)
+  WHERE status IN ('assigned', 'in_progress');
 CREATE INDEX IF NOT EXISTS idx_processed_events_consumer ON processed_events(consumer_name);
+CREATE INDEX IF NOT EXISTS idx_task_dlq_replayed ON task_dlq(replayed);
